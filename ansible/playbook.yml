@@ -1,0 +1,126 @@
+---
+- name: Configure Nginx web server and deploy static website
+  hosts: webservers
+  become: yes
+  vars:
+    github_repo: "https://github.com/phnorwood/claude-intro.git"
+    website_dir: "/var/www/html"
+    repo_clone_dir: "/tmp/website-repo"
+
+  tasks:
+    - name: Wait for instance to be ready
+      wait_for_connection:
+        timeout: 300
+        delay: 10
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install required packages
+      apt:
+        name:
+          - nginx
+          - git
+        state: present
+
+    - name: Ensure Nginx is stopped before making changes
+      systemd:
+        name: nginx
+        state: stopped
+
+    - name: Remove default Nginx content
+      file:
+        path: "{{ website_dir }}"
+        state: absent
+
+    - name: Create website directory
+      file:
+        path: "{{ website_dir }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: '0755'
+
+    - name: Clone GitHub repository
+      git:
+        repo: "{{ github_repo }}"
+        dest: "{{ repo_clone_dir }}"
+        clone: yes
+        update: yes
+        force: yes
+
+    - name: Copy website files to Nginx directory
+      shell: "cp -r {{ repo_clone_dir }}/* {{ website_dir }}/"
+      args:
+        executable: /bin/bash
+
+    - name: Set proper ownership for website files
+      file:
+        path: "{{ website_dir }}"
+        owner: www-data
+        group: www-data
+        recurse: yes
+
+    - name: Configure Nginx default site
+      copy:
+        dest: /etc/nginx/sites-available/default
+        content: |
+          server {
+              listen 80 default_server;
+              listen [::]:80 default_server;
+
+              root {{ website_dir }};
+              index index.html index.htm;
+
+              server_name _;
+
+              location / {
+                  try_files $uri $uri/ =404;
+              }
+
+              # Security headers
+              add_header X-Frame-Options "SAMEORIGIN" always;
+              add_header X-Content-Type-Options "nosniff" always;
+              add_header X-XSS-Protection "1; mode=block" always;
+          }
+        mode: '0644'
+
+    - name: Test Nginx configuration
+      command: nginx -t
+      register: nginx_test
+      changed_when: false
+
+    - name: Enable Nginx service
+      systemd:
+        name: nginx
+        enabled: yes
+
+    - name: Start Nginx service
+      systemd:
+        name: nginx
+        state: started
+
+    - name: Restart Nginx to apply changes
+      systemd:
+        name: nginx
+        state: restarted
+
+    - name: Verify Nginx is running
+      systemd:
+        name: nginx
+        state: started
+      register: nginx_status
+
+    - name: Display deployment status
+      debug:
+        msg:
+          - "Website deployment completed successfully!"
+          - "Nginx status: {{ nginx_status.status.ActiveState }}"
+          - "Website files location: {{ website_dir }}"
+
+    - name: Clean up temporary repository clone
+      file:
+        path: "{{ repo_clone_dir }}"
+        state: absent

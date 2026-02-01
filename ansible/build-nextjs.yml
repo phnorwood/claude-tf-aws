@@ -1,0 +1,134 @@
+---
+- name: Build and deploy Next.js application
+  hosts: webservers
+  become: yes
+  vars:
+    website_dir: "/var/www/html"
+    build_output_dir: "/var/www/html/out"
+
+  tasks:
+    - name: Install prerequisites for Node.js
+      apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+        state: present
+        update_cache: yes
+
+    - name: Create directory for keyrings
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Download NodeSource GPG key
+      shell: curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+      args:
+        creates: /etc/apt/keyrings/nodesource.gpg
+
+    - name: Add NodeSource repository for Node.js 20.x
+      shell: echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list
+      args:
+        creates: /etc/apt/sources.list.d/nodesource.list
+
+    - name: Update apt cache after adding NodeSource repository
+      apt:
+        update_cache: yes
+
+    - name: Install Node.js 20.x
+      apt:
+        name: nodejs
+        state: present
+
+    - name: Check Node.js version
+      command: node --version
+      register: node_version
+      changed_when: false
+
+    - name: Display Node.js version
+      debug:
+        msg: "Node.js version: {{ node_version.stdout }}"
+
+    - name: Fix npm cache permissions
+      file:
+        path: /var/www/.npm
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: '0755'
+        recurse: yes
+      ignore_errors: yes
+
+    - name: Install npm dependencies
+      command: npm install
+      args:
+        chdir: "{{ website_dir }}"
+      become_user: www-data
+      environment:
+        HOME: /var/www
+        NPM_CONFIG_CACHE: /var/www/.npm
+      register: npm_install
+      changed_when: "'added' in npm_install.stdout or 'updated' in npm_install.stdout"
+
+    - name: Build Next.js application for static export
+      command: npm run build
+      args:
+        chdir: "{{ website_dir }}"
+      become_user: www-data
+      environment:
+        NODE_ENV: production
+        HOME: /var/www
+        NPM_CONFIG_CACHE: /var/www/.npm
+
+    - name: Check if 'out' directory exists
+      stat:
+        path: "{{ build_output_dir }}"
+      register: out_dir
+
+    - name: Update Nginx configuration to serve from build output
+      copy:
+        dest: /etc/nginx/sites-available/default
+        content: |
+          server {
+              listen 80 default_server;
+              listen [::]:80 default_server;
+
+              root {{ build_output_dir if out_dir.stat.exists else website_dir }};
+              index index.html index.htm;
+
+              server_name _;
+
+              location / {
+                  try_files $uri $uri/ $uri.html =404;
+              }
+
+              # Security headers
+              add_header X-Frame-Options "SAMEORIGIN" always;
+              add_header X-Content-Type-Options "nosniff" always;
+              add_header X-XSS-Protection "1; mode=block" always;
+
+              # Cache static assets
+              location ~* \.(jpg|jpeg|png|gif|ico|css|js|svg|woff|woff2|ttf|eot)$ {
+                  expires 1y;
+                  add_header Cache-Control "public, immutable";
+              }
+          }
+        mode: '0644'
+
+    - name: Test Nginx configuration
+      command: nginx -t
+      register: nginx_test
+      changed_when: false
+
+    - name: Reload Nginx
+      systemd:
+        name: nginx
+        state: reloaded
+
+    - name: Display deployment summary
+      debug:
+        msg:
+          - "Next.js build completed successfully!"
+          - "Build output: {{ build_output_dir if out_dir.stat.exists else 'Using source directory' }}"
+          - "Nginx has been reconfigured and reloaded"
