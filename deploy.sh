@@ -142,7 +142,7 @@ main() {
 
   echo ""
   read -rp "$(echo -e "${YELLOW}Proceed with 'terraform apply'? [y/N]: ${NC}")" confirm
-  [[ "${confirm,,}" == "y" ]] || { warn "Aborted by user."; exit 0; }
+  [[ "$confirm" == "y" || "$confirm" == "Y" ]] || { warn "Aborted by user."; exit 0; }
 
   terraform_apply
 
