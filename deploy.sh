@@ -34,9 +34,19 @@ check_prerequisites() {
   done
 
   # Verify AWS credentials are configured
-  if ! aws sts get-caller-identity &>/dev/null; then
-    error "AWS credentials are not configured or invalid. Run 'aws configure' first."
+  local sts_output sts_exit
+  sts_output="$(aws sts get-caller-identity 2>&1)" || sts_exit=$?
+  if [[ -n "${sts_exit:-}" ]]; then
+    echo -e "${RED}[ERROR]${NC} AWS credentials check failed:" >&2
+    echo "$sts_output" >&2
+    echo "" >&2
+    echo "       Options to configure credentials:" >&2
+    echo "         1. aws configure" >&2
+    echo "         2. export AWS_ACCESS_KEY_ID=... && export AWS_SECRET_ACCESS_KEY=..." >&2
+    echo "         3. export AWS_PROFILE=<profile-name>" >&2
+    exit 1
   fi
+  info "AWS identity: $(echo "$sts_output" | grep -o '"Arn": "[^"]*"' | cut -d'"' -f4)"
 
   success "All prerequisites satisfied."
 }
