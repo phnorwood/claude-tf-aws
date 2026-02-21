@@ -25,7 +25,7 @@ variable "project_name" {
 variable "github_repo" {
   description = "GitHub repository URL for the static website"
   type        = string
-  default     = "https://github.com/phnorwood/claude-intro.git"
+  default     = "https://github.com/phnorwood/phnorwood.com.git"
 }
 
 variable "allowed_ssh_cidr" {
