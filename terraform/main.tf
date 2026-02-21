@@ -33,7 +33,7 @@ resource "aws_key_pair" "deployer" {
 # Save private key locally
 resource "local_file" "private_key" {
   content         = tls_private_key.ssh_key.private_key_pem
-  filename        = "${path.module}/../ansible/ssh-key.pem"
+  filename        = "${abspath(path.module)}/../ansible/ssh-key.pem"
   file_permission = "0600"
 }
 
@@ -120,11 +120,11 @@ resource "aws_eip" "web_server" {
 
 # Generate Ansible inventory file
 resource "local_file" "ansible_inventory" {
-  content = templatefile("${path.module}/inventory.tpl", {
+  content = templatefile("${abspath(path.module)}/inventory.tpl", {
     public_ip   = aws_eip.web_server.public_ip
-    private_key = "${path.module}/../ansible/ssh-key.pem"
+    private_key = "${abspath(path.module)}/../ansible/ssh-key.pem"
   })
-  filename = "${path.module}/../ansible/inventory.ini"
+  filename = "${abspath(path.module)}/../ansible/inventory.ini"
 
   depends_on = [aws_eip.web_server, local_file.private_key]
 }

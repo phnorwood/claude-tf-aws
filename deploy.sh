@@ -60,14 +60,13 @@ terraform_init() {
 
 terraform_plan() {
   info "Running Terraform plan..."
-  terraform -chdir="$TF_DIR" plan -out="$TF_DIR/tfplan"
+  terraform -chdir="$TF_DIR" plan
   success "Terraform plan complete."
 }
 
 terraform_apply() {
   info "Applying Terraform plan..."
-  terraform -chdir="$TF_DIR" apply -input=false "$TF_DIR/tfplan"
-  rm -f "$TF_DIR/tfplan"
+  terraform -chdir="$TF_DIR" apply -auto-approve
   success "Terraform apply complete."
 }
 
@@ -139,11 +138,6 @@ main() {
   # ── Step 1: Provision infrastructure ──
   terraform_init
   terraform_plan
-
-  echo ""
-  read -rp "$(echo -e "${YELLOW}Proceed with 'terraform apply'? [y/N]: ${NC}")" confirm
-  [[ "$confirm" == "y" || "$confirm" == "Y" ]] || { warn "Aborted by user."; exit 0; }
-
   terraform_apply
 
   # ── Step 2: Retrieve outputs ──
@@ -158,7 +152,7 @@ main() {
 
   # ── Step 4: Configure web server ──
   run_ansible "playbook.yml"     "Nginx installation and website clone"
-  run_ansible "build-nextjs.yml" "Node.js install and Next.js build"
+  run_ansible "build-jekyll.yml" "Ruby, Bundler, and Jekyll build"
 
   # ── Step 5: Done ──
   print_summary "$PUBLIC_IP"

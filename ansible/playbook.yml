@@ -3,7 +3,7 @@
   hosts: webservers
   become: yes
   vars:
-    github_repo: "https://github.com/phnorwood/claude-intro.git"
+    github_repo: "https://github.com/phnorwood/phnorwood.com.git"
     website_dir: "/var/www/html"
     repo_clone_dir: "/tmp/website-repo"
 

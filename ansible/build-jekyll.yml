@@ -1,0 +1,88 @@
+---
+- name: Build and deploy Jekyll site
+  hosts: webservers
+  become: yes
+  vars:
+    website_dir: "/var/www/html"
+
+  tasks:
+    - name: Install Ruby and native extension build dependencies
+      apt:
+        name:
+          - ruby-full
+          - ruby-dev
+          - build-essential
+          - zlib1g-dev
+          - libxml2-dev
+          - libxslt1-dev
+          - liblzma-dev
+          - libffi-dev
+        state: present
+        update_cache: yes
+
+    - name: Install Bundler gem
+      command: gem install bundler --no-document
+      args:
+        creates: /usr/local/bin/bundle
+
+    - name: Install Jekyll gem dependencies
+      command: /usr/local/bin/bundle install
+      args:
+        chdir: "{{ website_dir }}"
+      environment:
+        HOME: /root
+        BUNDLE_PATH: /usr/local/bundle
+
+    - name: Build Jekyll site
+      command: /usr/local/bin/bundle exec jekyll build
+      args:
+        chdir: "{{ website_dir }}"
+      environment:
+        HOME: /root
+        BUNDLE_PATH: /usr/local/bundle
+        JEKYLL_ENV: production
+
+    - name: Configure Nginx to serve built Jekyll site
+      copy:
+        dest: /etc/nginx/sites-available/default
+        content: |
+          server {
+              listen 80 default_server;
+              listen [::]:80 default_server;
+
+              root {{ website_dir }}/_site;
+              index index.html index.htm;
+
+              server_name _;
+
+              location / {
+                  try_files $uri $uri/ =404;
+              }
+
+              add_header X-Frame-Options "SAMEORIGIN" always;
+              add_header X-Content-Type-Options "nosniff" always;
+              add_header X-XSS-Protection "1; mode=block" always;
+          }
+        mode: '0644'
+
+    - name: Test Nginx configuration
+      command: nginx -t
+      changed_when: false
+
+    - name: Set ownership of built site
+      file:
+        path: "{{ website_dir }}"
+        owner: www-data
+        group: www-data
+        recurse: yes
+
+    - name: Reload Nginx
+      systemd:
+        name: nginx
+        state: reloaded
+
+    - name: Display deployment summary
+      debug:
+        msg:
+          - "Jekyll build and deployment completed!"
+          - "Serving from: {{ website_dir }}/_site"
